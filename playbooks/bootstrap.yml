@@ -1,0 +1,61 @@
+---
+- name: Check remote connections
+  hosts: "{{ edpm_override_hosts | default('all', true) }}"
+  strategy: linear
+  gather_facts: "{{ gather_facts | default(false) }}"
+  tasks:
+    - name: Wait for connection
+      ansible.builtin.wait_for_connection:
+        delay: "{{ edpm_wait_for_connection_delay | default(10) }}"
+        timeout: "{{ edpm_wait_for_connection_timeout | default(600) }}"
+- name: Bootstrap node
+  hosts: "{{ edpm_override_hosts | default('all', true) }}"
+  strategy: linear
+  gather_facts: "{{ gather_facts | default(false) }}"
+  any_errors_fatal: "{{ edpm_any_errors_fatal | default(true) }}"
+  max_fail_percentage: "{{ edpm_max_fail_percentage | default(0) }}"
+  tasks:
+    - name: Grow volumes
+      ansible.builtin.import_role:
+        name: osp.edpm.edpm_growvols
+      tags:
+        - edpm_growvols
+    # Installs multiple packages, sets up selinux and openvswitch
+    - name: Install edpm_bootstrap
+      ansible.builtin.import_role:
+        name: osp.edpm.edpm_bootstrap
+        tasks_from: bootstrap.yml
+      tags:
+        - edpm_bootstrap
+    # This should be done very early in the bootstrap process
+    # to ensure that the created users and groups are available
+    # before any packages are installed or services are started
+    # that may need them.
+    - name: Configure host users and groups
+      ansible.builtin.import_role:
+        name: edpm_users
+      tags:
+        - edpm_users
+    # Install packages and set up modules, reboot as needed
+    - name: Install edpm_kernel
+      ansiblP1+r[20~\P1+r[21~\P1+r[23~\e.builtin.import_role:
+        name: osp.edpm.edpm_kernel
+      tags:
+        - edpm_kernel
+    - name: Import edpm_tuned
+      ansible.builtin.import_role:
+        name: osp.edpm.edpm_tuned
+      tags:
+        - edpm_tuned
+    - name: Configure Kernel Args
+      ansible.builtin.import_role:
+        name: osp.edpm.edpm_kernel
+        tasks_from: kernelargs.yml
+      tags:
+        - edpm_kernel
+    - name: Configure KSM for kernel
+      ansible.builtin.import_role:
+        name: osp.edpm.edpm_kernel
+        tasks_from: ksm.yml
+      tags:
+        - edpm_kernel
